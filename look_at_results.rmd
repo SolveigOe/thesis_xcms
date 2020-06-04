@@ -1,0 +1,2021 @@
+---
+title: "Results"
+author: "Solveig Østergaard"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+# Set base
+
+```{r include=FALSE}
+library(tidyverse)
+library(RColorBrewer)
+library(readxl)
+library(huxtable)
+
+setwd("C:/Users/solve/Desktop/Thesis/results")
+
+#setting the theme and dimensions for all plots
+theme_custom = function (base_size = 9, base_family = "sans") {
+  theme_classic(base_size = base_size, base_family = base_family) + 
+    theme(line = element_line(colour = "black", size = 0.3, linetype = 1, lineend = "square"), 
+          rect = element_rect(fill = NA, colour = "black", size = 0.3, linetype = 1), 
+          text = element_text(family = base_family, face = "plain", colour = "black", size = base_size, 
+                              lineheight = 0.9, hjust = 0.5, vjust = 0.5, angle = 0, margin = margin(), debug = FALSE),
+          axis.line = element_line(colour = "black", size = 0.3, linetype = 1, lineend = "square"), 
+          axis.text = element_text(family = base_family, face = "plain", colour = "black", size = base_size, 
+                                   lineheight = 0.9, hjust = 0.5, vjust = 0.5, angle = 0, margin = margin(), 
+                                   debug = FALSE),
+          #panel.grid = element_blank(),
+          plot.title = element_text(hjust = 0.5, face="bold"),
+          axis.title = element_text(size=base_size),
+          legend.text=element_text(size=base_size),
+          plot.background = element_rect(fill = "transparent", color = NA),
+          complete = FALSE)
+}
+
+theme_set(theme_custom())
+
+knitr::opts_chunk$set(fig.width = 175/25.4)   # mm converted to inches
+knitr::opts_chunk$set(fig.height = 125/25.4)  # unit should inches
+knitr::opts_chunk$set(dpi = 108)
+
+set.seed(0)
+
+#brewer.pal(11, "Spectral")
+```
+
+
+```{r eval=FALSE, include=FALSE}
+# Looking at test data:
+test_res <- read_csv("../cluster_files_test/results_eval_xcms_snthresh.csv")
+
+test_res <- test_res %>% filter(run != "run")
+
+test_res$rmse_cv <- as.numeric(test_res$rmse_cv)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+## Plotting:
+test_res %>% ggplot(aes(value, rmse_cv))+
+  geom_point(color="#9e0142")
+
+c("#9e0142","#5e4fa2")
+```
+
+# Results from the old dataset
+This is the RMSE from the the dataset made earlier with the old XCMS, and processed in the same way as the datasets made with the new XCMS. This is made to have something to compare the new results with.
+
+```{r}
+data_old <- read_csv("old_dataset/results_eval_old_.csv")
+data_old <- data_old %>% filter(run!="run")
+data_old$rmse_cv <- as.numeric(data_old$rmse_cv)
+mean(data_old$rmse_cv)
+
+```
+
+# Dataframes for collecting results
+
+```{r}
+best_points <- data.frame(matrix(ncol=2, nrow=0))
+colnames(best_points) <- c("parameter", "cv_rmse")
+
+best_means <- data.frame(matrix(ncol=2, nrow=0))
+colnames(best_points) <- c("parameter", "mean_rmse")
+```
+
+```{r}
+best_points <- rbind(best_points, data.frame("parameter"=data_old$value,"cv_rmse"=data_old$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="old_data", "mean_rmse"=mean(data_old$rmse_cv)))
+```
+# Looking at base data
+
+```{r}
+base <- read_csv("base/results_eval_xcms_base.csv")
+base <- base %>% filter(run != "run")
+base$rmse_cv <- as.numeric(base$rmse_cv)
+
+mean(base$rmse_cv)
+```
+
+```{r}
+best_points <- rbind(best_points, data.frame("parameter"=base$value,"cv_rmse"=base$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="base", "mean_rmse"=mean(base$rmse_cv)))
+```
+
+Compared to old dataset:
+
+```{r}
+old_base <- bind_rows(data_old, base)
+
+means <- old_base %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- old_base %>% ggplot()+
+  geom_point(aes(value, rmse_cv), alpha=0.3)+
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Old version vs new version of XCMS')+
+  xlab("")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))+
+  scale_x_discrete(limits=c("Old_data", "base_0"), labels=c("Old_data" ="Old XCMS", "base_0"="New base XCMS"))+
+  NULL
+  
+p
+#ggsave(p, file="plots/base_vs_old_data.png", width = 100/25.4, height = 80/25.4)
+```
+
+
+# Time experiment
+
+This will show what method that makes sense to use:
+
+```{r}
+time <- read_csv("time_experiment/results_time_experiment.csv", col_names = c("run","rmse_cv","rmse_val","runtime","method"))
+
+times <- time %>% group_by(method) %>% 
+  summarise("Mean runtime (sec)" = mean(runtime), "Mean CV RMSE (days)" = mean(rmse_cv))
+
+times$method <- factor(times$method, levels=c("pls", "pcr", "ranger", "rf", "gbm", "xgbTree"))
+```
+
+```{r}
+times$Method1 <- c("Stochasitc Gradient Boosting", "Principal Component Regression", "Partial Least Squares", "Random Forest", "Random Forest", "Extreme Gradient Boosting")
+times$Method <- times$method
+
+
+p <- times %>% ggplot()+
+  geom_col(aes(method, `Mean runtime (sec)`)) +
+  xlab("")+
+  coord_flip()
+
+p
+#ggsave(p, file="plots/timeplot.png", width = 100/25.4, height = 80/25.4)
+```
+
+```{r}
+
+times <- times[order(times$`Mean runtime (sec)`, decreasing = T),]
+
+ht <- as_hux(times %>% select(Method, Method1, `Mean runtime (sec)`, `Mean CV RMSE (days)`),
+          add_colnames = T, autoformat=T)
+bold(ht)[1,] <-T
+bottom_border(ht)[1,] <- 1
+caption(ht) <- "Mean time of different methods run by 'carret'"
+col_width(ht)[2] <- 20
+number_format(ht)[,3] <- 0
+number_format(ht)[,4] <- 2
+ht <- merge_cells(ht, 1, 1:2)
+align(ht)[1,1] <- "center"
+
+
+theme_plain(ht)
+```
+
+From this, it is obvious that ranger runs fast and with a good result - therefore this will be used for all evaluation of datasets.
+
+## Validataion vs CV error
+
+To show I can use CV error instead of Validation error to evaluate how well my change in XCMS works, as long as I use the same model and way of making CV every time.
+
+Means for the different models:
+
+```{r}
+means <- time %>% group_by(method) %>% summarise(mean_cv = mean(rmse_cv), mean_val = mean(rmse_val)) %>% mutate("shape"="Mean")
+```
+
+Abline through (0,0) and slope=1
+
+```{r}
+p <- time %>% ggplot() +
+  geom_abline(slope=1, intercept = 0, alpha=0.3)+
+  geom_point(data=means, aes(mean_cv, mean_val, shape=shape), size=2)+
+  geom_point(aes(rmse_cv, rmse_val, color=method), size=2)+
+  geom_point(data=means, aes(mean_cv, mean_val, fill=method), shape=21, size=2)+
+  scale_fill_manual(values = brewer.pal(6, "Spectral"), guide=F)+
+  scale_color_manual(values = brewer.pal(6, "Spectral"))+
+  scale_shape_manual(values=21) +
+  ylab("Validation RMSE")+
+  xlab("CV RMSE")+
+  labs(color="Package")+
+  labs(shape="")+
+  ylim(5,17)+
+  xlim(5,17)+
+  guides(color = guide_legend(order=1),
+         shape = guide_legend(order=0))+
+  NULL
+p
+#ggsave(p, file="plots/cv_vs_val.png", width = 100/25.4, height = 80/25.4)
+```
+
+
+
+# Bw from grouppeak
+
+from 1 to 45, since default is 35 and the value chosen by Kirstine is 2.5
+
+```{r}
+gp_bw <- read_csv("grouppeaks_bw/results_eval_xcms_grouppeak_bw.csv")
+gp_bw <- gp_bw %>% filter(run != "run")
+gp_bw$rmse_cv <- as.numeric(gp_bw$rmse_cv)
+gp_bw$value <- as.numeric(sub("grouppeak_bw_", "", gp_bw$value))
+
+means <- gp_bw %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <-gp_bw %>% ggplot(aes(value, rmse_cv))+
+  geom_point(alpha=0.3) +
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Different bandwidth in GroupPeak')+
+  xlab("Bandwidth")+
+  ylab("RMSE")+
+  theme(legend.position = "none")
+
+p
+#ggsave(p, file="plots/grouppeak_bw_parameter_first.png", width = 100/25.4, height = 80/25.4)
+```
+
+It looks like it migt be interesting to look closer at values from 0 to 3
+
+Smaller values for bw:
+
+```{r}
+gp_bw2 <- read_csv("grouppeaks_bw/results_eval_xcms_grouppeak_bw_2.csv")
+gp_bw2 <- gp_bw2 %>% filter(run != "run")
+gp_bw2$rmse_cv <- as.numeric(gp_bw2$rmse_cv)
+gp_bw2$value <- as.numeric(sub("grouppeak_bw_", "", gp_bw2$value))
+
+means <- gp_bw2 %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <-gp_bw2 %>% ggplot(aes(value, rmse_cv))+
+  geom_point(alpha=0.3) +
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Different bandwidth in GroupPeak')+
+  xlab("Bandwidth")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))
+
+p
+#ggsave(p, file="plots/grouppeak_bw_parameter_2.png", width = 100/25.4, height = 80/25.4)
+```
+
+```{r}
+best_rmses <- gp_bw2 %>%  filter(value==means$value[means$means == min(means$means)])
+
+best_points <- rbind(best_points, data.frame("parameter"="gp_bw","cv_rmse"=best_rmses$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="gp_bw", "mean_rmse"=min(means$means)))
+```
+
+
+# Minfrac from GroupPeak
+
+```{r}
+gp_mf <- read_csv("grouppeaks_minfrac/results_eval_xcms_grouppeak_minfrac.csv")
+gp_mf <- gp_mf %>% filter(run != "run")
+gp_mf$rmse_cv <- as.numeric(gp_mf$rmse_cv)
+gp_mf$value <- as.numeric(sub("grouppeak_minfrac_", "", gp_mf$value))
+
+means <- gp_mf %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <-gp_mf %>% ggplot(aes(value, rmse_cv))+
+  geom_point(alpha=0.3) +
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Minimum fraction in GroupPeak function')+
+  xlab("Minimum fraction")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))
+
+p
+#ggsave(p, file="plots/grouppeak_minfrac.png", width = 100/25.4, height = 80/25.4)
+
+```
+
+```{r}
+best_rmses <- gp_mf %>%  filter(value==means$value[means$means == min(means$means)])
+
+best_points <- rbind(best_points, data.frame("parameter"="gp_mf","cv_rmse"=best_rmses$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="gp_mf", "mean_rmse"=min(means$means)))
+```
+
+# Binsize from GroupPeak
+
+```{r}
+gp_binsize <- read_csv("grouppeak_binsize/results_eval_xcms_grouppeak_binsize.csv")
+gp_binsize <- gp_binsize %>% filter(run != "run")
+gp_binsize$rmse_cv <- as.numeric(gp_binsize$rmse_cv)
+gp_binsize$value <- as.numeric(sub("grouppeak_binsize_", "", gp_binsize$value))
+
+means <- gp_binsize %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <-gp_binsize %>% ggplot(aes(value, rmse_cv))+
+  geom_point(alpha=0.3) +
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Binsize in GroupPeak function')+
+  xlab("Minimum fraction")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))
+
+p
+#ggsave(p, file="plots/grouppeak_binsize.png", width = 100/25.4, height = 80/25.4)
+```
+
+Look closer at values around 1
+
+```{r}
+gp_binsize <- read_csv("grouppeak_binsize/results_eval_xcms_grouppeak_binsize_2.csv")
+gp_binsize <- gp_binsize %>% filter(run != "run")
+gp_binsize$rmse_cv <- as.numeric(gp_binsize$rmse_cv)
+gp_binsize$value <- as.numeric(sub("grouppeak_binsize_", "", gp_binsize$value))
+
+means <- gp_binsize %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <-gp_binsize %>% ggplot(aes(value, rmse_cv))+
+  geom_point(alpha=0.3) +
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Binsize in GroupPeak function')+
+  xlab("Minimum fraction")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))
+
+p
+#ggsave(p, file="plots/grouppeak_binsize_2.png", width = 100/25.4, height = 80/25.4)
+means[order(means$means),]
+```
+
+```{r}
+best_rmses <- gp_binsize %>%  filter(value==means$value[means$means == min(means$means)])
+
+best_points <- rbind(best_points, data.frame("parameter"="gp_binsize","cv_rmse"=best_rmses$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="gp_binsize", "mean_rmse"=min(means$means)))
+```
+
+# MaxFeatures from GroupPeak
+
+```{r}
+gp_maxfeat <- read_csv("grouppeak_maxfeat/results_eval_xcms_grouppeak_maxfeat_1.csv")
+gp_maxfeat <- gp_maxfeat %>% filter(run != "run")
+gp_maxfeat$rmse_cv <- as.numeric(gp_maxfeat$rmse_cv)
+gp_maxfeat$value <- as.numeric(sub("grouppeak_maxfeat_", "", gp_maxfeat$value))
+
+means <- gp_maxfeat %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <-gp_maxfeat %>% ggplot(aes(value, rmse_cv))+
+  geom_point(alpha=0.3) +
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('MaxFeatures in GroupPeak function')+
+  xlab("Minimum fraction")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))
+
+p
+#ggsave(p, file="plots/grouppeak_maxfeat.png", width = 100/25.4, height = 80/25.4)
+```
+
+
+# Prefilter from CentWaveParameter (chrom peak detection)
+prefilter(k, i), at least k peaks with intensity >=i
+
+```{r}
+cwp_prefilter <- read_csv("cwp_prefilter/results_eval_xcms_cwp_prefilter.csv")
+cwp_prefilter <- cwp_prefilter %>% filter(run!="run")
+cwp_prefilter$rmse_cv <- as.numeric(cwp_prefilter$rmse_cv)
+cwp_prefilter$value <- sub("cwp_prefilter_", "", cwp_prefilter$value)
+cwp_prefilter <- cwp_prefilter %>% separate(value, into = c("k", "i"), sep="_")
+#cwp_prefilter$k <- as.numeric(cwp_prefilter$k)
+cwp_prefilter$i <- as.numeric(cwp_prefilter$i)
+cwp_prefilter <- cwp_prefilter %>% mutate(i_changed = i+as.numeric(k)-7.5)
+
+means <- cwp_prefilter %>% group_by(k, i_changed, i) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- cwp_prefilter %>% ggplot()+
+  geom_point(aes(i_changed, rmse_cv, fill=k), size=1.5, color="black", shape=21)+
+  geom_point(data=means, aes(i_changed, means, shape=type), size=3) +
+  #geom_point(data=means, aes(i_changed, means, color=k), shape="_", size=5)+
+  #scale_color_manual(values=brewer.pal(11, "Spectral")[7:11], guide=F)+
+  ggtitle("Prefilter with at least k peaks with different intensity")+
+  xlab("Intensity")+
+  facet_wrap(~i, ncol=5, scales="free_x", strip.position = "bottom")+
+  scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.key.height = unit(0.4, "cm"), legend.spacing.y = unit(0, "cm"))+
+  scale_shape_manual(values="_") +
+  ylab("CV RMSE")+
+  labs(shape="")+  
+  guides(fill = guide_legend(order=1),
+         shape = guide_legend(order=0))+
+  NULL
+ 
+p
+#ggsave(p, file="plots/cwp_prefilter.png", width = 125/25.4, height = 80/25.4)
+
+collected_prefilter <- cwp_prefilter
+collected_means <- means
+```
+
+It might make sense to try with higher values for both parametes
+
+```{r}
+cwp_prefilter <- read_csv("cwp_prefilter/results_eval_xcms_cwp_prefilter_2.csv")
+cwp_prefilter <- cwp_prefilter %>% filter(run!="run")
+cwp_prefilter$rmse_cv <- as.numeric(cwp_prefilter$rmse_cv)
+cwp_prefilter$value <- sub("cwp_prefilter_", "", cwp_prefilter$value)
+cwp_prefilter <- cwp_prefilter %>% separate(value, into = c("k", "i"), sep="_")
+#cwp_prefilter$k <- as.numeric(cwp_prefilter$k)
+cwp_prefilter$i <- as.numeric(cwp_prefilter$i)
+cwp_prefilter <- cwp_prefilter %>% mutate(i_changed = i+as.numeric(k)-7.5)
+
+means <- cwp_prefilter %>% group_by(k, i_changed, i) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- cwp_prefilter %>% ggplot()+
+  geom_point(aes(i_changed, rmse_cv, fill=k), size=1.5, color="black", shape=21)+
+  geom_point(data=means, aes(i_changed, means, shape=type), size=3) +
+  ggtitle("Prefilter with at least k peaks with different intensity")+
+  xlab("Intensity")+
+  facet_wrap(~i, ncol=7, scales="free_x", strip.position = "bottom")+
+  scale_fill_manual(values = brewer.pal(11, "Spectral")[4:11])+
+  scale_shape_manual(values="_") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.key.height = unit(0.4, "cm"), legend.spacing.y = unit(0, "cm"))+
+  ylab("CV RMSE")+
+  labs(shape="")+    
+  guides(fill = guide_legend(order=1),
+         shape = guide_legend(order=0))+
+  NULL
+  
+p
+#ggsave(p, file="plots/cwp_prefilter_1.png", width = 150/25.4, height = 80/25.4)
+
+collected_prefilter <- bind_rows(collected_prefilter, cwp_prefilter)
+collected_means <- bind_rows(collected_means, means)
+```
+
+Even higher values of k could make sense
+
+```{r}
+cwp_prefilter <- read_csv("cwp_prefilter/results_eval_xcms_cwp_prefilter_3.csv")
+cwp_prefilter <- cwp_prefilter %>% filter(run!="run")
+cwp_prefilter$rmse_cv <- as.numeric(cwp_prefilter$rmse_cv)
+cwp_prefilter$value <- sub("cwp_prefilter_", "", cwp_prefilter$value)
+cwp_prefilter <- cwp_prefilter %>% separate(value, into = c("k", "i"), sep="_")
+#cwp_prefilter$k <- as.numeric(cwp_prefilter$k)
+cwp_prefilter$i <- as.numeric(cwp_prefilter$i)
+cwp_prefilter <- cwp_prefilter %>% mutate(i_changed = i+as.numeric(k)-7.5)
+
+cwp_prefilter$k <- factor(cwp_prefilter$k, levels=c("5", "6", "7", "8", "9", "10", "11", "12"))
+
+means <- cwp_prefilter %>% group_by(k, i_changed, i) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- cwp_prefilter %>% ggplot()+
+  geom_point(aes(i_changed, rmse_cv, fill=k), size=1.5, color="black", shape=21)+
+  geom_point(data=means, aes(i_changed, means, shape=type), size=3) +
+  ggtitle("Prefilter with at least k peaks with different intensity")+
+  xlab("Intensity")+
+  facet_wrap(~i, ncol=7, scales="free_x", strip.position = "bottom")+
+  scale_fill_manual(values = brewer.pal(11, "Spectral")[4:11])+
+  scale_shape_manual(values="_") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.key.height = unit(0.4, "cm"), legend.spacing.y = unit(0, "cm"))+
+  ylab("CV RMSE")+
+  labs(shape="")+    
+  guides(fill = guide_legend(order=1),
+         shape = guide_legend(order=0))+
+  NULL
+  
+p
+
+#ggsave(p, file="plots/cwp_prefilter_2.png", width = 150/25.4, height = 80/25.4)
+cwp_prefilter$k <- as.character(cwp_prefilter$k)
+collected_prefilter <- bind_rows(collected_prefilter, cwp_prefilter)
+collected_means <- bind_rows(collected_means, means)
+```
+
+Even higher values of k...
+
+
+```{r}
+cwp_prefilter <- read_csv("cwp_prefilter/results_eval_xcms_cwp_prefilter_4.csv")
+cwp_prefilter <- cwp_prefilter %>% filter(run!="run")
+cwp_prefilter$rmse_cv <- as.numeric(cwp_prefilter$rmse_cv)
+cwp_prefilter$value <- sub("cwp_prefilter_", "", cwp_prefilter$value)
+cwp_prefilter <- cwp_prefilter %>% separate(value, into = c("k", "i"), sep="_")
+#cwp_prefilter$k <- as.numeric(cwp_prefilter$k)
+cwp_prefilter$i <- as.numeric(cwp_prefilter$i)
+cwp_prefilter <- cwp_prefilter %>% mutate(i_changed = i+as.numeric(k)-7.5)
+
+cwp_prefilter$k <- factor(cwp_prefilter$k, levels=c("5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"))
+
+means <- cwp_prefilter %>% group_by(k, i_changed, i) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- cwp_prefilter %>% ggplot()+
+  geom_point(aes(i_changed, rmse_cv, fill=k), size=1.5, color="black", shape=21)+
+  geom_point(data=means, aes(i_changed, means, shape=type), size=3) +
+  ggtitle("Prefilter with at least k peaks with different intensity")+
+  xlab("Intensity")+
+  facet_wrap(~i, ncol=7, scales="free_x", strip.position = "bottom")+
+  scale_fill_manual(values = brewer.pal(11, "Spectral"))+
+  scale_shape_manual(values="_") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.spacing.y = unit(0, "cm"), legend.key.height = unit(0.4, "cm"))+
+  ylab("CV RMSE")+
+  labs(shape="")+    
+  guides(fill = guide_legend(order=1),
+         shape = guide_legend(order=0))+
+  NULL
+  
+p
+
+#ggsave(p, file="plots/cwp_prefilter_3.png", width = 150/25.4, height = 80/25.4)
+cwp_prefilter$k <- as.character(cwp_prefilter$k)
+collected_prefilter <- bind_rows(collected_prefilter, cwp_prefilter)
+collected_means <- bind_rows(collected_means, means)
+```
+
+
+```{r}
+best_rmses <- cwp_prefilter %>%  filter(k==means$k[means$means == min(means$means)]& 
+                                          i==means$i[means$means == min(means$means)])
+
+best_points <- rbind(best_points, data.frame("parameter"="cwp_prefilter","cv_rmse"=best_rmses$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="cwp_prefilter", "mean_rmse"=min(means$means)))
+```
+
+
+Collected plot of prefilter with only useful information:
+
+```{r}
+collected_prefilter$k <- as.numeric(collected_prefilter$k)
+collected_prefilter <- collected_prefilter %>% filter(i>100 & i<400) %>% filter(k==3 | k>8)
+collected_prefilter$k <- factor(collected_prefilter$k, levels=c("3", "9", "10", "11", "12", "13", "14", "15"))
+collected_prefilter <- collected_prefilter %>% mutate(i_changed=case_when(k==3 ~ i_changed+5,
+                                                   k!=3 ~ i_changed))
+collected_means$k <- as.numeric(collected_means$k)
+collected_means <- collected_means %>% filter(i>100 & i<400) %>% filter(k==3 | k>8)
+collected_means <- collected_means %>% ungroup() %>% mutate(i_changed=case_when(k==3 ~ i_changed+5,
+                                                   k!=3 ~ i_changed))
+collected_means$k <- factor(collected_means$k, levels=c("3", "9", "10", "11", "12", "13", "14", "15"))
+
+p <- distinct(collected_prefilter) %>% ggplot()+
+  geom_point(aes(i_changed, rmse_cv, fill=k), size=1.5, color="black", shape=21)+
+  geom_point(data=collected_means, aes(i_changed, means, shape=type), size=3) +
+  ggtitle("Prefilter with at least k peaks with different intensity")+
+  xlab("Intensity")+
+  facet_wrap(~i, ncol=7, scales="free_x", strip.position = "bottom")+
+  scale_fill_manual(values = c("#9E0142",brewer.pal(11, "Spectral")[5:11]))+
+  scale_shape_manual(values="_") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.spacing.y = unit(0, "cm"), legend.key.height = unit(0.4, "cm"))+
+  ylab("CV RMSE")+
+  labs(shape="")+    
+  guides(fill = guide_legend(order=1),
+         shape = guide_legend(order=0))+
+  NULL
+
+p
+#ggsave(p, file="plots/cwp_prefilter_collected.png", width = 150/25.4, height = 80/25.4)
+
+```
+
+Changed axis:
+```{r}
+collected_prefilter$i <- factor(collected_prefilter$i)
+collected_means$i <- factor(collected_means$i)
+
+#collected_prefilter$k <- as.numeric(as.character(collected_prefilter$k))
+
+p <- distinct(collected_prefilter) %>% ggplot()+
+  geom_point(aes(i, rmse_cv, fill=i), size=1.5, color="black", shape=21)+
+  geom_point(data=collected_means, aes(i, means, shape=type), size=3) +
+  ggtitle("Prefilter with at least k peaks with different intensity")+
+  xlab("k")+
+  facet_wrap(~k, ncol=8, scales="free_x", strip.position = "bottom")+
+  scale_fill_manual(values = c("#9E0142",brewer.pal(5, "Spectral")))+
+  scale_shape_manual(values="_") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.spacing.y = unit(0, "cm"), legend.key.height = unit(0.4, "cm"))+
+  ylab("CV RMSE")+
+  labs(shape="", fill="intensity")+    
+  guides(fill = guide_legend(order=1),
+         shape = guide_legend(order=0))+
+  NULL
+
+p
+#ggsave(p, file="plots/cwp_prefilter_collected_flipped.png", width = 150/25.4, height =60/25.4)
+
+```
+# Integrate and noise from CentWaveParameter (chrom peak detection)
+Integrate = 1 means it uses peak limits that are found through decent on mexican hat filtered data
+Integrate = 2 means it decents on the actual data
+This is more or less affected by noise.
+
+```{r}
+cwp_int_noise <- read_csv("cwp_int_noise/results_eval_xcms_cwp_int_noise.csv")
+cwp_int_noise <- cwp_int_noise %>% filter(run!="run")
+cwp_int_noise$value <- sub("cwp_int_noise_", "", cwp_int_noise$value)
+cwp_int_noise <- cwp_int_noise %>% separate(value, into = c("integrate", "noise"), sep="_")
+cwp_int_noise$noise <- as.numeric(cwp_int_noise$noise)
+cwp_int_noise$rmse_cv <- as.numeric(cwp_int_noise$rmse_cv)
+
+means <- cwp_int_noise %>% group_by(integrate, noise) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+
+p <- cwp_int_noise %>% ggplot()+
+  geom_point(aes(noise, rmse_cv), size=1, color="black", alpha=0.3)+
+  geom_point(data=means, aes(noise,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle("Different noise levels for differently filtered data")+
+  xlab("Noise")+
+  facet_wrap(~integrate, ncol=2, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("CV RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))+
+  NULL
+  
+p
+
+#ggsave(p, file="plots/cwp_int_noise_1.png", width = 100/25.4, height = 80/25.4)
+```
+
+It would make sense to look at values between 0 and 4000
+
+```{r}
+cwp_int_noise <- read_csv("cwp_int_noise/results_eval_xcms_cwp_int_noise_2.csv")
+cwp_int_noise <- cwp_int_noise %>% filter(run!="run")
+cwp_int_noise$value <- sub("cwp_int_noise_", "", cwp_int_noise$value)
+cwp_int_noise <- cwp_int_noise %>% separate(value, into = c("integrate", "noise"), sep="_")
+cwp_int_noise$noise <- as.numeric(cwp_int_noise$noise)
+cwp_int_noise$rmse_cv <- as.numeric(cwp_int_noise$rmse_cv)
+
+means <- cwp_int_noise %>% group_by(integrate, noise) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+
+p <- cwp_int_noise %>% ggplot()+
+  geom_point(aes(noise, rmse_cv), size=1, color="black", alpha=0.3)+
+  geom_point(data=means, aes(noise,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle("Different noise levels for differently filtered data")+
+  xlab("Noise")+
+  facet_wrap(~integrate, ncol=2, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("CV RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))+
+  NULL
+
+p
+
+#ggsave(p, file="plots/cwp_int_noise_2.png", width = 100/25.4, height = 80/25.4)
+```
+
+
+```{r}
+best_rmses <- cwp_int_noise %>%  filter(integrate==means$integrate[means$means == min(means$means)]& 
+                                          noise==means$noise[means$means == min(means$means)])
+
+best_points <- rbind(best_points, data.frame("parameter"="cwp_int_noise","cv_rmse"=best_rmses$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="cwp_int_noise", "mean_rmse"=min(means$means)))
+```
+
+# Binsize in ObiwarpParam in adjustRtime, alignment
+
+```{r}
+align_binsize <- read_csv("align_binsize/results_eval_xcms_align_binsize.csv")
+align_binsize <- align_binsize %>% filter(run != "run")
+align_binsize$rmse_cv <- as.numeric(align_binsize$rmse_cv)
+align_binsize$value <- as.numeric(sub("align_binsize_", "", align_binsize$value))
+
+means <- align_binsize %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <-align_binsize %>% ggplot(aes(value, rmse_cv))+
+  geom_point(alpha=0.3) +
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Binsize in the Obiwarp algorithm')+
+  xlab("Minimum fraction")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))
+
+p
+#ggsave(p, file="plots/align_binsize.png", width = 100/25.4, height = 80/25.4)
+
+```
+
+```{r}
+align_binsize <- read_csv("align_binsize/results_eval_xcms_align_binsize_2.csv")
+align_binsize <- align_binsize %>% filter(run != "run")
+align_binsize$rmse_cv <- as.numeric(align_binsize$rmse_cv)
+align_binsize$value <- as.numeric(sub("align_binsize_", "", align_binsize$value))
+
+means <- align_binsize %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <-align_binsize %>% ggplot(aes(value, rmse_cv))+
+  geom_point(alpha=0.3) +
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Binsize in the Obiwarp algorithm')+
+  xlab("Minimum fraction")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))
+
+p
+#ggsave(p, file="plots/align_binsize_2.png", width = 100/25.4, height = 80/25.4)
+
+```
+
+```{r}
+best_rmses <- align_binsize %>%  filter(value==means$value[means$means == min(means$means)])
+
+best_points <- rbind(best_points, data.frame("parameter"="align_binsize","cv_rmse"=best_rmses$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="align_binsize", "mean_rmse"=min(means$means)))
+```
+
+# Response in ObiwarpParam in adjustRtime, alignment
+
+```{r}
+align_response <- read_csv("align_response/results_eval_xcms_align_response.csv")
+align_response <- align_response %>% filter(run != "run")
+align_response$rmse_cv <- as.numeric(align_response$rmse_cv)
+align_response$value <- as.numeric(sub("align_response_", "", align_response$value))
+
+means <- align_response %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <-align_response %>% ggplot(aes(value, rmse_cv))+
+  geom_point(alpha=0.3) +
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Responsiveness in the Obiwarp algorithm')+
+  xlab("Minimum fraction")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))
+
+p
+#ggsave(p, file="plots/align_response.png", width = 100/25.4, height = 80/25.4)
+
+```
+
+```{r}
+best_rmses <- align_response %>%  filter(value==means$value[means$means == min(means$means)])
+
+best_points <- rbind(best_points, data.frame("parameter"="align_response","cv_rmse"=best_rmses$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="align_response", "mean_rmse"=min(means$means)))
+```
+
+
+# Gap in ObiwarpParam in adjustRtime, alignment
+
+```{r}
+align_gap <- read_csv("align_gap/results_eval_xcms_gap.csv")
+align_gap <- align_gap %>% filter(run != "run")
+align_gap$rmse_cv <- as.numeric(align_gap$rmse_cv)
+align_gap$value <- sub("gap_", "", align_gap$value)
+align_gap <- align_gap %>% separate(value, into = c("gapInit", "gapExtend"), sep="_")
+align_gap$gapInit <- as.numeric(align_gap$gapInit)
+align_gap$gapExtend <- as.numeric(align_gap$gapExtend)
+
+means <- align_gap %>% group_by(gapInit, gapExtend) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- align_gap %>% ggplot()+
+  geom_point(aes(gapExtend, rmse_cv), size=1, color="black", alpha=0.3)+
+  geom_point(data=means, aes(gapExtend,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle("Different gap initiations for different gap extention values")+
+  facet_wrap(~gapInit, ncol=5, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("CV RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.13),
+        panel.background = element_rect(color="black"),
+        panel.spacing = unit(0.75,"lines"),
+        axis.text.x = element_text(angle=90, vjust = 0.5))+
+  NULL
+
+p
+#ggsave(p, file="plots/align_gap.png", width = 125/25.4, height = 80/25.4)
+```
+
+Default values seem to be a good idea.
+# Mz from fillChromPeaks
+```{r}
+fcp_mz <- read_csv("fcp_mz/results_eval_xcms_fcp_mz.csv")
+fcp_mz <- fcp_mz %>% filter(run != "run")
+fcp_mz$rmse_cv <- as.numeric(fcp_mz$rmse_cv)
+fcp_mz$value <- sub("fcp_mz_", "", fcp_mz$value)
+fcp_mz <- fcp_mz %>% separate(value, into = c("expand", "fixed"), sep="_")
+fcp_mz$expand <- as.numeric(fcp_mz$expand)
+fcp_mz$fixed <- as.numeric(fcp_mz$fixed)
+#cwp_prefilter <- cwp_prefilter %>% mutate(i_changed = i+as.numeric(k)-7.5)
+
+
+means <- fcp_mz %>% group_by(expand, fixed) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- fcp_mz %>% ggplot()+
+  geom_point(aes(fixed, rmse_cv), size=1, color="black", alpha=0.3)+
+  geom_point(data=means, aes(fixed,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle("Different expandMz for different fixedMz")+
+  xlab("fixedMz")+
+  facet_wrap(~expand, ncol=5, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("CV RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.13),
+        panel.background = element_rect(color="black"),
+        panel.spacing = unit(0.75,"lines"),
+        axis.text.x = element_text(angle=90, vjust = 0.5))+
+  NULL
+
+p
+#ggsave(p, file="plots/fcp_mz.png", width = 125/25.4, height = 80/25.4)
+```
+
+It probably makes sense to keep default values (0), or a bit higher fixedMz values
+
+```{r}
+fcp_mz <- read_csv("fcp_mz/results_eval_xcms_fcp_mz_2.csv")
+fcp_mz <- fcp_mz %>% filter(run != "run")
+fcp_mz$rmse_cv <- as.numeric(fcp_mz$rmse_cv)
+fcp_mz$value <- sub("fcp_mz_", "", fcp_mz$value)
+fcp_mz <- fcp_mz %>% separate(value, into = c("expand", "fixed"), sep="_")
+fcp_mz$expand <- as.numeric(fcp_mz$expand)
+fcp_mz$fixed <- as.numeric(fcp_mz$fixed)
+#cwp_prefilter <- cwp_prefilter %>% mutate(i_changed = i+as.numeric(k)-7.5)
+
+
+means <- fcp_mz %>% group_by(expand, fixed) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- fcp_mz %>% ggplot()+
+  geom_point(aes(fixed, rmse_cv), size=1, color="black", alpha=0.3)+
+  geom_point(data=means, aes(fixed,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle("Different expandMz for different fixedMz")+
+  xlab("fixedMz")+
+  facet_wrap(~expand, ncol=5, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("CV RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.13),
+        panel.background = element_rect(color="black"),
+        panel.spacing = unit(0.75,"lines"),
+        axis.text.x = element_text(angle=90, vjust = 0.5))+
+  NULL
+
+p
+#ggsave(p, file="plots/fcp_mz_2.png", width = 125/25.4, height = 80/25.4)
+```
+
+
+```{r}
+fcp_mz <- read_csv("fcp_mz/results_eval_xcms_fcp_mz_3.csv")
+fcp_mz <- fcp_mz %>% filter(run != "run")
+fcp_mz$rmse_cv <- as.numeric(fcp_mz$rmse_cv)
+fcp_mz$value <- sub("fcp_mz_", "", fcp_mz$value)
+fcp_mz <- fcp_mz %>% separate(value, into = c("expand", "fixed"), sep="_")
+fcp_mz$expand <- as.numeric(fcp_mz$expand)
+fcp_mz$fixed <- as.numeric(fcp_mz$fixed)
+#cwp_prefilter <- cwp_prefilter %>% mutate(i_changed = i+as.numeric(k)-7.5)
+
+
+means <- fcp_mz %>% group_by(expand, fixed) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- fcp_mz %>% ggplot()+
+  geom_point(aes(fixed, rmse_cv), size=1, color="black", alpha=0.3)+
+  geom_point(data=means, aes(fixed,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle("Different expandMz for different fixedMz")+
+  xlab("fixedMz")+
+  facet_wrap(~expand, ncol=5, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("CV RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.13),
+        panel.background = element_rect(color="black"),
+        panel.spacing = unit(0.75,"lines"),
+        axis.text.x = element_text(angle=90, vjust = 0.5))+
+  NULL
+
+p
+
+#ggsave(p, file="plots/fcp_mz_3.png", width = 125/25.4, height = 80/25.4)
+```
+
+
+```{r}
+best_rmses <- fcp_mz %>%  filter(expand==means$expand[means$means == min(means$means)]& 
+                                          fixed==means$fixed[means$means == min(means$means)])
+
+best_points <- rbind(best_points, data.frame("parameter"="fcp_mz","cv_rmse"=best_rmses$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="fcp_mz", "mean_rmse"=min(means$means)))
+```
+
+If I have to do something: higher fixedMz values. But it looks like it makes no sense to do it for other than expandMz=0.
+
+# Rt from fillChromPeaks
+
+```{r}
+fcp_rt <- read_csv("fcp_rt/results_eval_xcms_fcp_rt.csv")
+fcp_rt <- fcp_rt %>% filter(run != "run")
+fcp_rt$rmse_cv <- as.numeric(fcp_rt$rmse_cv)
+fcp_rt$value <- sub("fcp_rt_", "", fcp_rt$value)
+fcp_rt <- fcp_rt %>% separate(value, into = c("expand", "fixed"), sep="_")
+fcp_rt$expand <- as.numeric(fcp_rt$expand)
+fcp_rt$fixed <- as.numeric(fcp_rt$fixed)
+#cwp_prefilter <- cwp_prefilter %>% mutate(i_changed = i+as.numeric(k)-7.5)
+
+
+means <- fcp_rt %>% group_by(expand, fixed) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- fcp_rt %>% ggplot()+
+  geom_point(aes(fixed, rmse_cv), size=1, color="black", alpha=0.3)+
+  geom_point(data=means, aes(fixed,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle("Different fixedRt for different expandRt")+
+  xlab("expandRt")+
+  facet_wrap(~expand, ncol=5, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("CV RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.13),
+        panel.background = element_rect(color="black"),
+        panel.spacing = unit(0.75,"lines"),
+        axis.text.x = element_text(angle=90, vjust = 0.5))+
+  NULL
+
+p
+#ggsave(p, file="plots/fcp_rt.png", width = 125/25.4, height = 80/25.4)
+```
+
+Here again, default values seem right (0)
+
+```{r}
+best_rmses <- fcp_rt %>%  filter(expand==means$expand[means$means == min(means$means)]& 
+                                          fixed==means$fixed[means$means == min(means$means)])
+
+best_points <- rbind(best_points, data.frame("parameter"="fcp_rt","cv_rmse"=best_rmses$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="fcp_rt", "mean_rmse"=min(means$means)))
+```
+
+# Optimized (gethered best values) vs base dataset:
+
+Datasets
+
+```{r}
+
+base_prep <- read_csv("base/prep_xcms_base_0.csv")
+base_rtmz <- read_csv("base/prep_1_xcms_base_0_rtmz.csv")
+rtmz_base <- data.frame(t(base_rtmz %>% select(-name, -day, -batch)))
+colnames(rtmz_base) <- base_rtmz$name
+
+optimized <- read_csv("optimized/results_eval_xcms_optimized.csv")
+optimized <- optimized %>% filter(run != "run")
+optimized$rmse_cv <- as.numeric(optimized$rmse_cv)
+optimized$value <- sub("prep_1_xcms_", "", optimized$value)
+
+opt_rtmz <- read_csv("optimized/prep_1_xcms_optimized_0_rtmz.csv")
+rtmz_gathered <- data.frame(t(opt_rtmz %>% select(-name, -day, -batch)))
+colnames(rtmz_gathered) <- opt_rtmz$name
+
+```
+
+
+```{r}
+dim(rtmz_base)
+dim(rtmz_gathered)
+```
+
+There are a lot fewer predictors in the optimized dataset than in the base dataset!
+
+```{r}
+best_points <- rbind(best_points, data.frame("parameter"=optimized$value,"cv_rmse"=optimized$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="optimized", "mean_rmse"=mean(optimized$rmse_cv)))
+```
+
+```{r}
+comp_res <- bind_rows(data_old, base, optimized)
+
+means <- comp_res %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- comp_res %>% ggplot()+
+  geom_point(aes(value, rmse_cv), alpha=0.3)+
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Old, new and gathered optimization of XCMS')+
+  xlab("")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))+
+  scale_x_discrete(limits=c("Old_data", "base_0", "optimized_0"), labels=c("Old_data" ="Old XCMS", "base_0"="New base XCMS", "optimized_0"= "Optimized XCMS"))+
+  NULL
+  
+p
+#ggsave(p, file="plots/optimized_collected.png", width = 100/25.4, height = 80/25.4)
+```
+
+
+Base data distribution of M/Z and retention times
+
+```{r}
+p <- rtmz_base %>% ggplot()+
+  geom_hex(aes(rtmed, mzmed), bins=60)+
+  scale_fill_gradientn(colors=c("#5E4FA2","#66C2A5", "#FFFFBF","#F46D43", "#9E0142"))+
+  labs(x="Retention time", y="M/Z", title="Median retention time and M/Z for each feature")
+
+p
+#ggsave(p, file="plots/base_mzrt.png", width = 100/25.4, height = 80/25.4)
+```
+
+Collected optimized data distribution of M/Z and restention times
+
+```{r}
+p <- rtmz_gathered %>% ggplot()+
+  geom_hex(aes(rtmed, mzmed), bins=60)+
+  scale_fill_gradientn(colors=c("#5E4FA2","#66C2A5", "#FFFFBF","#F46D43", "#9E0142"))+
+  labs(x="Retention time", y="M/Z", title="Median retention time and M/Z for each feature")
+
+p
+#ggsave(p, file="plots/col_opt_mzrt.png", width = 100/25.4, height = 80/25.4)
+```
+
+Plottet together:
+
+```{r}
+rtmz <- rbind(rtmz_base %>% mutate("type"= "base"),rtmz_gathered %>% mutate("type"="gathered"))
+
+p <- rtmz %>% ggplot()+
+  geom_point(aes(rtmed, mzmed, color=type), size=0.5)+
+  labs(x="Retention time", y="M/Z", 
+       title="Median retention time and M/Z for each feature",
+       color="XCMS")+
+  scale_color_manual(values=c("#66C2A5", "#F46D43"), labels=c("Base", "Optimized"))+ 
+  guides(colour = guide_legend(override.aes = list(size=4, shape=15)))
+
+p
+
+label_type <- c("Base XCMS", "Gathered optimization")
+names(label_type) <- c("base", "gathered")
+
+p <- rtmz %>% ggplot()+
+  geom_hex(aes(rtmed, mzmed), bins=60)+
+  scale_fill_gradientn(colors=c("#5E4FA2","#66C2A5", "#FFFFBF","#F46D43", "#9E0142"))+
+  facet_wrap(~type, labeller = labeller(type=label_type))+
+  labs(x="Retention time", y="M/Z", title="Median retention time and M/Z pr feature")
+
+p
+
+#ggsave(p, file="plots/collected_mzrt.png", width = 125/25.4, height = 80/25.4)
+```
+
+
+## All the best versions of the parameters, incl base and optimized (collected)
+
+```{r}
+best_points$parameter <- sub("O", "o", sub("_0", "", best_points$parameter))
+
+best_points$parameter <- factor(best_points$parameter, levels=best_means$parameter[order(best_means$mean_rmse)])
+
+means <- best_means %>% mutate("type"="Mean RMSE")
+
+p <- best_points %>% ggplot()+
+  geom_point(aes(parameter, cv_rmse), alpha=0.3)+
+  geom_point(data=means, aes(parameter,mean_rmse, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  theme(axis.text.x = element_text(angle=90), axis.title.x=element_blank(), legend.title = element_blank())+
+  labs(y="RMSE")
+
+p
+#ggsave(p, file="plots/parameter_results.png", width = 120/25.4, height = 80/25.4)
+
+diff_base <- best_means %>% filter(parameter!="old_data" & parameter!="base") %>% mutate("diff_from_base" = mean(base$rmse_cv)- mean_rmse)
+
+diff_base <- diff_base[order(-diff_base$diff_from_base),]
+colnames(diff_base) <- c("Parameter", "Mean RMSE", "Difference from base")
+ht <- as_hux(diff_base, autoformat = T, add_colnames=T)
+
+bold(ht)[1,] <- T
+#bold(ht)[4,] <- T
+bottom_border(ht)[1,] <- 1
+ht <- set_text_color(ht, 3, 1:3, "#3288BD")
+#brewer.pal(11,"Spectral")
+theme_plain(ht)
+```
+
+## Best parameter values compared
+
+```{r}
+best_points$parameter <- factor(best_points$parameter, levels=best_means$parameter[order(best_means$mean_rmse)])
+
+means <- best_means %>% mutate("type"="Mean RMSE") %>% filter(parameter!="old_data")
+
+bp <- best_points %>% filter(parameter!="old_data")
+#axis.text.x = element_text(angle=90, vjust=0.5)
+p <- bp %>% ggplot()+
+  geom_point(aes(parameter, cv_rmse), alpha=0.3)+
+  geom_point(data=means, aes(parameter,mean_rmse), shape="|", color="#D53E4F", size=4)+
+  theme(axis.title.y=element_blank(), legend.title = element_blank(), legend.position = c(0.85, -0.08),
+        axis.text.y=element_text(color=c("black", "#3288BD", "black", "black", "black", "black", "black", "black", "#3288BD", "black", "black")))+
+  scale_x_discrete(labels=c("integrate and noise",
+                         "Combined optimization",
+                         "bw",
+                         "prefilter",
+                         "expandMz and fixedMZ",
+                         "minFraction",
+                         "binSize (AR)",
+                         "binSize (GCP)",
+                         "Base XCMS",
+                         "expandRt and fixedRt",
+                         "reponse"))+
+  coord_flip()+
+  labs(y="RMSE")
+
+
+p
+#ggsave(p, file="plots2/parameter_results.png", width = 120/25.4, height = 80/25.4)
+
+means <- means %>% mutate("func"=NA, "pe"=NA) %>% select(parameter, func, pe, mean_rmse)
+means <- means[order(means$mean_rmse),]
+
+colnames(means) <- c("Parameter", "Function","Parameter explanation","Best mean RMSE")
+means$Parameter <- c("integrate and noise",
+                         "*Combined optimization",
+                         "bw",
+                         "prefilter",
+                         "expandMz and fixedMz",
+                         "minFraction",
+                         "binSize",
+                         "binSize",
+                     "*Base XCMS",
+                         "expandRt and fixedRt",
+                         "reponse")
+means$Function <- c("findChromPeaks",
+                    "-",
+                    "groupChromPeaks",
+                    "findChromPeaks",
+                    "fillChromPeaks",
+                    "groupChromPeaks",
+                    "adjustRtime",
+                    "groupChromPeaks",
+                    "-",
+                    "fillChromPeaks",
+                    "adjustRtime")
+means$`Parameter explanation`<- c("Integration method (for peak limits, only two possibilities) and noise (min. intensity for peak detection) run together",
+                                  "Best versions of the chosen parameters combined",
+                                  "The bandwidth given to the density-based grouping function for the peaks",
+                                  "c(k,I), where k defines the number of peaks and I defines the intensity for the peaks to be detected",
+                                  "M/Z expansion width of missing peaks (expandMz) which is then expanded further with a constant factor (fixedMz)",
+                                  "Minimum fraction of samples with peaks for defining a peak group",
+                                  "M/Z-dimension binsize used in the profile matrix generation used for aligning samples",
+                                  "Size in M/Z-dimension of overlapping slices",
+                                  "Base versions of all parameters",
+                                  "The same as for expandMz and fixedMz but with the width of the retention time",
+                                  "Responsiveness of warping, from linear to using all points")
+
+
+ht <- as_hux(means, autoformat = T, add_colnames=T)
+ht <- cbind(c("","Used in optimization","","","", "Not used in optimization", "","","","","",""), ht)
+
+brewer.pal(11, "Spectral")
+bold(ht)[1,] <- T
+#bold(ht)[4,] <- T
+ht <- set_text_color(ht, 3, 2:5, "#3288BD")
+ht <- set_text_color(ht, 6:12, 1:5, "grey60")
+ht <- set_text_color(ht, 10, 2:5, "#3288BD")
+ht <- ht %>% merge_cells(2:5,1) %>% merge_cells(6:12,1)
+bottom_border(ht)[,1]<-0.5
+bottom_border(ht)[2,] <- 0
+right_border(ht)[,1] <- 0.5
+#bottom_border(ht)[6,]<-0.5
+ht <- set_rotation(ht, 1:12,1, 90)
+#brewer.pal(11,"Spectral")
+ht <- theme_plain(ht)
+ht <- set_background_color(ht, 1:12,1, NA)
+ht <- set_valign(ht, 1:12, 1, "middle")
+#col_width(ht) <- c("1pt","30pt","2pt","500pt","15pt")
+ht <- set_wrap(ht, 1:12, 4, T)
+#wrap(ht) <- T
+width(ht) <- 0.8
+ht
+```
+
+* From XCMS documentation
+
+
+# Sequential optimization of parameters
+To make sure they do not counteracts each other.
+
+The optimal parameters has been chosen for centWaveParameter, integrate and noise.
+
+Then GroupChromPeaks, bw (bandwidth) is optimized with this.
+Default is 30, base parameter is 2.5
+
+```{r}
+gp_bw <- read_csv("sequential_opt/results_eval_xcms_gp_bw.csv")
+gp_bw <- gp_bw %>% filter(run != "run")
+gp_bw$rmse_cv <- as.numeric(gp_bw$rmse_cv)
+gp_bw$value <- as.numeric(sub("gp_bw_", "", gp_bw$value))
+
+means <- gp_bw %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <-gp_bw %>% ggplot(aes(value, rmse_cv))+
+  geom_point(alpha=0.3) +
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle('Different bandwidth in GroupPeak')+
+  xlab("Bandwidth")+
+  ylab("RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.09))
+
+p
+#ggsave(p, file="plots/grouppeak_bw_parameter_seq_optimized.png", width = 100/25.4, height = 80/25.4)
+```
+
+prefilter(k, i), at least k peaks with intensity >=i
+
+```{r}
+cwp_prefilter <- read_csv("sequential_opt/results_eval_xcms_cwp_prefilter.csv")
+cwp_prefilter <- cwp_prefilter %>% filter(run!="run")
+cwp_prefilter$rmse_cv <- as.numeric(cwp_prefilter$rmse_cv)
+cwp_prefilter$value <- sub("cwp_prefilter_", "", cwp_prefilter$value)
+cwp_prefilter <- cwp_prefilter %>% separate(value, into = c("k", "i"), sep="_")
+cwp_prefilter$k <- factor(cwp_prefilter$k, levels=c("3","5","6","7","8","9","10","11","12","13","14","15"))
+cwp_prefilter$i <- as.numeric(cwp_prefilter$i)
+cwp_prefilter <- cwp_prefilter %>% filter(i<200)
+
+means <- cwp_prefilter %>% group_by(k, i) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- cwp_prefilter %>% ggplot()+
+  geom_point(aes(k, rmse_cv, fill=k), size=1.5, color="black", shape=21)+
+  geom_point(data=means, aes(k, means, shape=type), size=3) +
+  #geom_point(data=means, aes(i_changed, means, color=k), shape="_", size=5)+
+  #scale_color_manual(values=brewer.pal(11, "Spectral")[7:11], guide=F)+
+  ggtitle("Prefilter with at least k peaks with different intensity")+
+  xlab("Intensity")+
+  facet_wrap(~i, ncol=5, scales="free_x", strip.position = "bottom")+
+  scale_fill_manual(values = c(brewer.pal(11, "Spectral"), "purple"))+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.key.height = unit(0.4, "cm"), legend.spacing.y = unit(0, "cm"))+
+  scale_shape_manual(values="_") +
+  ylab("CV RMSE")+
+  labs(shape="")+  
+  guides(fill = guide_legend(order=1),
+         shape = guide_legend(order=0))+
+  NULL
+ 
+p
+#ggsave(p, file="plots/seq_cwp_prefilter.png", width = 125/25.4, height = 80/25.4)
+```
+
+
+```{r}
+cwp_prefilter <- read_csv("sequential_opt/results_eval_xcms_cwp_prefilter_2.csv")
+cwp_prefilter <- cwp_prefilter %>% filter(run!="run")
+cwp_prefilter$rmse_cv <- as.numeric(cwp_prefilter$rmse_cv)
+cwp_prefilter$value <- sub("cwp_prefilter_", "", cwp_prefilter$value)
+cwp_prefilter <- cwp_prefilter %>% separate(value, into = c("k", "i"), sep="_")
+#cwp_prefilter$k <- as.numeric(cwp_prefilter$k)
+cwp_prefilter$i <- as.numeric(cwp_prefilter$i)
+cwp_prefilter <- cwp_prefilter %>% filter(i<200)
+
+means <- cwp_prefilter %>% group_by(k, i) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- cwp_prefilter %>% ggplot()+
+  geom_point(aes(k, rmse_cv, fill=k), size=1.5, color="black", shape=21)+
+  geom_point(data=means, aes(k, means, shape=type), size=3) +
+  #geom_point(data=means, aes(i_changed, means, color=k), shape="_", size=5)+
+  #scale_color_manual(values=brewer.pal(11, "Spectral")[7:11], guide=F)+
+  ggtitle("Prefilter with at least k peaks with different intensity")+
+  xlab("Intensity")+
+  facet_wrap(~i, ncol=5, scales="free_x", strip.position = "bottom")+
+  scale_fill_manual(values = c(brewer.pal(11, "Spectral"), "firebrick"))+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.key.height = unit(0.4, "cm"), legend.spacing.y = unit(0, "cm"))+
+  scale_shape_manual(values="_") +
+  ylab("CV RMSE")+
+  labs(shape="")+  
+  guides(fill = guide_legend(order=1),
+         shape = guide_legend(order=0))+
+  NULL
+ 
+p
+#ggsave(p, file="plots/seq_cwp_prefilter_2.png", width = 125/25.4, height = 80/25.4)
+```
+
+Here we see that small values of k and intensity seems like the best values - therefore we will keep the default value.
+
+Try with really high values:
+```{r}
+cwp_prefilter <- read_csv("sequential_opt/results_eval_xcms_cwp_prefilter_3.csv")
+cwp_prefilter <- cwp_prefilter %>% filter(run!="run")
+cwp_prefilter$rmse_cv <- as.numeric(cwp_prefilter$rmse_cv)
+cwp_prefilter$value <- sub("cwp_prefilter_", "", cwp_prefilter$value)
+cwp_prefilter <- cwp_prefilter %>% separate(value, into = c("k", "i"), sep="_")
+#cwp_prefilter$k <- as.numeric(cwp_prefilter$k)
+cwp_prefilter$i <- as.numeric(cwp_prefilter$i)
+cwp_prefilter <- cwp_prefilter %>% filter(i<200)
+
+means <- cwp_prefilter %>% group_by(k, i) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- cwp_prefilter %>% ggplot()+
+  geom_point(aes(k, rmse_cv, fill=k), size=1.5, color="black", shape=21)+
+  geom_point(data=means, aes(k, means, shape=type), size=3) +
+  #geom_point(data=means, aes(i_changed, means, color=k), shape="_", size=5)+
+  #scale_color_manual(values=brewer.pal(11, "Spectral")[7:11], guide=F)+
+  ggtitle("Prefilter with at least k peaks with different intensity")+
+  xlab("Intensity")+
+  facet_wrap(~i, ncol=5, scales="free_x", strip.position = "bottom")+
+  scale_fill_manual(values = c(brewer.pal(11, "Spectral"), "firebrick"))+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.key.height = unit(0.4, "cm"), legend.spacing.y = unit(0, "cm"))+
+  scale_shape_manual(values="_") +
+  ylab("CV RMSE")+
+  labs(shape="")+  
+  guides(fill = guide_legend(order=1),
+         shape = guide_legend(order=0))+
+  NULL
+ 
+p
+#ggsave(p, file="plots/seq_cwp_prefilter_2.png", width = 125/25.4, height = 80/25.4)
+```
+
+So no reason to try with higher values.
+
+```{r}
+fcp_mz <- read_csv("sequential_opt/results_eval_xcms_fcp_mz.csv")
+fcp_mz <- fcp_mz %>% filter(run != "run")
+fcp_mz$rmse_cv <- as.numeric(fcp_mz$rmse_cv)
+fcp_mz$value <- sub("fcp_mz_", "", fcp_mz$value)
+fcp_mz <- fcp_mz %>% separate(value, into = c("expand", "fixed"), sep="_")
+fcp_mz$expand <- as.numeric(fcp_mz$expand)
+fcp_mz$fixed <- as.numeric(fcp_mz$fixed)
+#cwp_prefilter <- cwp_prefilter %>% mutate(i_changed = i+as.numeric(k)-7.5)
+
+
+means <- fcp_mz %>% group_by(expand, fixed) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- fcp_mz %>% ggplot()+
+  geom_point(aes(fixed, rmse_cv), size=1, color="black", alpha=0.3)+
+  geom_point(data=means, aes(fixed,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+  ggtitle("Different expandMz for different fixedMz")+
+  xlab("fixedMz")+
+  facet_wrap(~expand, ncol=5, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("CV RMSE")+
+  theme(legend.title=element_blank(), legend.position = c(.85, -0.13),
+        panel.background = element_rect(color="black"),
+        panel.spacing = unit(0.75,"lines"),
+        axis.text.x = element_text(angle=90, vjust = 0.5))+
+  NULL
+
+p
+#ggsave(p, file="plots/seq_fcp_mz.png", width = 125/25.4, height = 80/25.4)
+```
+
+This is the smallest RMSE value I get from the sequential optimization
+
+## All the best versions of the parameters, incl base, optimized (collected) and seq optimized
+
+```{r}
+optimal <- read_csv("sequential_opt/results_eval_xcms_seq_optimal.csv")
+optimal <- optimal %>% filter(run!="run")
+#optimal$run <- as.numeric(optimal$run)
+optimal$rmse_cv <- as.numeric(optimal$rmse_cv)
+
+best_points <- rbind(best_points, data.frame("parameter"="seq_opt","cv_rmse"=optimal$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="seq_opt", "mean_rmse"=mean(optimal$rmse_cv)))
+```
+
+```{r}
+best_points$parameter <- factor(best_points$parameter, levels=best_means$parameter[order(best_means$mean_rmse)])
+
+means <- best_means %>% mutate("type"="Mean RMSE")
+
+#axis.text.x = element_text(angle=90, vjust=0.5)
+p <- best_points %>% ggplot()+
+  geom_point(aes(parameter, cv_rmse), alpha=0.3)+
+  geom_point(data=means, aes(parameter,mean_rmse, color=type), shape="|", size=4)+
+  scale_color_manual(values="#D53E4F")+
+  theme(axis.title.y=element_blank(), legend.title = element_blank(), legend.position = c(0.85, -0.08), 
+        axis.text.y=element_text(color=c("#3288BD", "black",
+                                         "#3288BD", "black", "black", "black", "black", "black", "black",
+                                         "#3288BD", "black", "black","#3288BD")))+
+  scale_x_discrete(labels=c("Sequential optimization", 
+                         "Integration and noise (CWP)",
+                         "Collected optimization",
+                         "Bandwidth (PDP)",
+                         "Prefilter (CWP)",
+                         "Expand and fixed MZ (FCP)",
+                         "minFraction (PDP)",
+                         "Binsize (OP)",
+                         "Binsize (PDP)",
+                         "Base XCMS",
+                         "Expand and fixed RT (FCP)",
+                         "Reponse (OP)",
+                         "Old XCMS"))+
+  coord_flip()+
+  labs(y="RMSE")
+
+
+p
+#ggsave(p, file="plots/parameter_results.png", width = 120/25.4, height = 80/25.4)
+
+diff_base <- best_means %>% filter(parameter!="old_data" & parameter!="base") %>%
+  mutate("diff_from_base" = mean(base$rmse_cv)- mean_rmse) %>% 
+  mutate(diff_from_old = mean(data_old$rmse_cv) - mean_rmse)
+
+diff_base <- diff_base[order(-diff_base$diff_from_base),]
+colnames(diff_base) <- c("Parameter", "Mean RMSE", "Difference from base XCMS", "Difference from old XCMS")
+diff_base$Parameter <- c("*Sequential optimization", 
+                         "Integration and noise (CWP)",
+                         "**Collected optimization",
+                         "Bandwidth (PDP)",
+                         "Prefilter (CWP)",
+                         "Expand and fixed MZ (FCP)",
+                         "minFraction (PDP)",
+                         "Binsize (OP)",
+                         "Binsize (PDP)",
+                         "Expand and fixed RT (FCP)",
+                         "Reponse (OP)")
+ht <- as_hux(diff_base, autoformat = T, add_colnames=T)
+ht <- cbind(c("","Used in optimization","","","","", "Not used in optimization", "","","","",""), ht)
+
+bold(ht)[1,] <- T
+#bold(ht)[4,] <- T
+ht <- set_text_color(ht, 4, 2:5, "#3288BD")
+ht <- set_text_color(ht, 2, 2:5, "#3288BD")
+ht <- set_text_color(ht, 7:12, 2:5, "grey40")
+ht <- ht %>% merge_cells(2:6,1) %>% merge_cells(7:12,1)
+bottom_border(ht)[,1]<-0.5
+bottom_border(ht)[2,] <- 0
+right_border(ht)[,1] <- 0.5
+#bottom_border(ht)[6,]<-0.5
+ht <- set_rotation(ht, 1:12,1, 90)
+#brewer.pal(11,"Spectral")
+ht <- theme_plain(ht)
+ht <- set_background_color(ht, 1:12,1, NA)
+ht <- set_valign(ht, 1:12, 1, "middle")
+ht
+```
+
+### old, base, gathered optimized and sequential optimized
+
+```{r}
+#optimal <- optimal %>%select(run, rmse_cv) %>%  mutate("value"="seq_opt")
+comp_res <- bind_rows(data_old, base, optimized, optimal)
+
+means <- comp_res %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- comp_res %>% ggplot()+
+  geom_point(aes(value, rmse_cv), alpha=0.3)+
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+#  ggtitle('Old, new, collected and sequentially optimized XCMS')+
+  xlab("")+
+  ylab("RMSE")+
+  theme(legend.text =element_blank(), legend.position = c(0.5, -0.09))+
+  scale_x_discrete(limits=c("Old_data", "base_0", "optimized_0", "seq_optimal"), labels=c("Old_data" ="Old XCMS", "base_0"="New XCMS", "optimized_0"= "Coll. opt.", "seq_optimal"="Seq. opt."))+
+  NULL
+  
+p
+#ggsave(p, file="plots/optimized_collected.png", width = 100/25.4, height = 80/25.4)
+```
+
+Datasets
+
+```{r}
+opt_rtmz <- read_csv("sequential_opt/prep_xcms_seq_optimal_rtmz.csv")
+temp1 <- data.frame(t(opt_rtmz %>% select(-name, -day, -batch)))
+colnames(temp1) <- opt_rtmz$name
+
+```
+
+
+Sequential optimized data distribution of M/Z and restention times
+
+```{r}
+p <- temp1 %>% ggplot()+
+  geom_hex(aes(rtmed, mzmed), bins=60)+
+  scale_fill_gradientn(colors=c("#5E4FA2","#66C2A5", "#FFFFBF","#F46D43", "#9E0142"))+
+  labs(x="Retention time", y="M/Z", title="Median retention time and M/Z for each feature")
+
+p
+#ggsave(p, file="plots/seq_opt_mzrt.png", width = 100/25.4, height = 80/25.4)
+```
+
+Plottet together:
+
+```{r}
+rtmz <- rbind(temp1 %>% mutate("type"= "seq"),rtmz)
+
+p <- rtmz %>% ggplot()+
+  geom_point(aes(rtmed, mzmed, color=type), size=0.5)+
+  labs(x="Retention time", y="M/Z", 
+       title="Median retention time and M/Z for each feature",
+       color="XCMS")+
+  #scale_color_manual(values=c("#66C2A5", "#F46D43"), labels=c("Base", "Optimized"))+ 
+  guides(colour = guide_legend(override.aes = list(size=4, shape=15)))
+
+p
+#ggsave(p, file="plots/seq_base_mzrt.png", width = 125/25.4, height = 80/25.4)
+```
+
+
+# QC optimization
+
+base QC values
+```{r}
+base_qc <- read_csv("QC_opt/results_QC_base.csv")
+base_qc_batch <- read_csv("QC_opt/results_batchQC_base.csv")
+
+base_qc
+base_qc_batch
+cor(base_qc_batch$mean_ang, base_qc_batch$mean_cor)
+```
+
+I think it would probably be okay to just choose one of the two to optimize with.
+
+cwp int_noise:
+
+```{r}
+cwp_int_noise <- read_csv("QC_opt/results_cwp_int_noise.csv")
+cwp_int_noise_batch <- read_csv("QC_opt/results_batch_cwp_int_noise.csv")
+
+cwp_int_noise <- cwp_int_noise %>% filter(mean_cor!="mean_cor")
+cwp_int_noise$param <- sub("cwp_int_noise_", "", cwp_int_noise$param)
+cwp_int_noise <- cwp_int_noise %>% separate(param, into = c("integrate", "noise"), sep="_")
+cwp_int_noise$noise <- as.numeric(cwp_int_noise$noise)
+cwp_int_noise$mean_cor <- as.numeric(cwp_int_noise$mean_cor)
+cwp_int_noise$mean_ang <- as.numeric(cwp_int_noise$mean_ang)
+cwp_int_noise$predictors <- as.numeric(cwp_int_noise$predictors)
+cor(cwp_int_noise$mean_ang, cwp_int_noise$mean_cor)
+
+p <- cwp_int_noise %>% ggplot()+
+  geom_point(aes(noise, mean_cor, color=integrate), size=2)+
+  ggtitle("Noise levels at differently filtered data")+
+  xlab("Noise")+
+  scale_color_manual(values = c("#D53E4F", "#5E4FA2"))+
+  ylab("Mean correlation in batches")+
+  guides(color=guide_legend(title="Integrate value"))+
+  NULL
+
+p
+
+#ggsave(p, file="plots/QC_cwp_int_noise.png", width = 100/25.4, height = 80/25.4)
+
+head(arrange(cwp_int_noise, -mean_cor))
+
+cor(cwp_int_noise$noise,cwp_int_noise$predictors)
+cor(cwp_int_noise$mean_cor,cwp_int_noise$predictors)
+
+cwp_int_noise_batch <- cwp_int_noise_batch %>% filter(mean_cor!="mean_cor")
+cwp_int_noise_batch$param <- sub("cwp_int_noise_", "", cwp_int_noise_batch$param)
+cwp_int_noise_batch <- cwp_int_noise_batch %>% separate(param, into = c("integrate", "noise"), sep="_")
+cwp_int_noise_batch$noise <- as.numeric(cwp_int_noise_batch$noise)
+cwp_int_noise_batch$mean_cor <- as.numeric(cwp_int_noise_batch$mean_cor)
+cwp_int_noise_batch$mean_ang <- as.numeric(cwp_int_noise_batch$mean_ang)
+cor(cwp_int_noise_batch$mean_ang, cwp_int_noise_batch$mean_cor)
+
+p <- cwp_int_noise_batch %>% ggplot()+
+  geom_point(aes(noise, mean_cor, color=batch), size=5)+
+  #scale_color_manual(values="#D53E4F")+
+  ggtitle("Different noise levels for differently filtered data")+
+  xlab("Noise")+
+  facet_wrap(~integrate, ncol=2, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("Mean correlation in batches")+
+  #theme(legend.title=element_blank(), legend.position = c(.85, -0.09))+
+  NULL
+
+p
+```
+
+I have to be aware of the fact that the fewer predictors, the higher the correlation.
+
+BW:
+
+```{r}
+gp_bw <- read_csv("QC_opt/results_gp_bw.csv")
+gp_bw_batch <- read_csv("QC_opt/results_batch_gp_bw.csv")
+
+gp_bw <- gp_bw %>% filter(mean_cor!="mean_cor")
+gp_bw$param <- sub("gp_bw_", "", gp_bw$param)
+gp_bw$param <- as.numeric(gp_bw$param)
+gp_bw$mean_cor <- as.numeric(gp_bw$mean_cor)
+gp_bw$mean_ang <- as.numeric(gp_bw$mean_ang)
+gp_bw$predictors <- as.numeric(gp_bw$predictors)
+cor(gp_bw$mean_ang, gp_bw$mean_cor)
+
+p <- gp_bw %>% ggplot()+
+  geom_point(aes(param, mean_cor), size=2)+
+  xlab("Bandwidth")+
+  ylab("Mean correlation in batches")+
+  NULL
+
+p
+
+#ggsave(p, file="plots/QC_gp_bw.png", width = 100/25.4, height = 80/25.4)
+
+head(arrange(gp_bw, -mean_cor))
+
+cor(gp_bw$param,gp_bw$predictors)
+cor(gp_bw$mean_cor,gp_bw$predictors)
+
+gp_bw_batch <- gp_bw_batch %>% filter(mean_cor!="mean_cor")
+gp_bw_batch$param <- sub("gp_bw_", "", gp_bw_batch$param)
+gp_bw_batch$param <- as.numeric(gp_bw_batch$param)
+gp_bw_batch$mean_cor <- as.numeric(gp_bw_batch$mean_cor)
+gp_bw_batch$mean_ang <- as.numeric(gp_bw_batch$mean_ang)
+cor(gp_bw_batch$mean_ang, gp_bw_batch$mean_cor)
+
+p <- gp_bw_batch %>% ggplot()+
+  geom_point(aes(param, mean_cor, color=batch), size=5)+
+  #ggtitle("Different noise levels for differently filtered data")+
+  #xlab("Noise")+
+  ylab("Mean correlation in batches")+
+  NULL
+
+p
+```
+
+Prefilter:
+
+```{r}
+prefilter <- read_csv("QC_opt/results_prefilter.csv")
+prefilter_batch <- read_csv("QC_opt/results_batch_prefilter.csv")
+
+prefilter <- prefilter %>% filter(mean_cor!="mean_cor")
+prefilter$param <- sub("prefilter_", "", prefilter$param)
+prefilter <- prefilter %>% separate(param, into = c("k", "i"), sep="_")
+prefilter$k <- as.numeric(prefilter$k)
+prefilter$i <- as.numeric(prefilter$i)
+prefilter <- prefilter %>% filter(i<200)
+prefilter$mean_cor <- as.numeric(prefilter$mean_cor)
+prefilter$mean_ang <- as.numeric(prefilter$mean_ang)
+prefilter$predictors <- as.numeric(prefilter$predictors)
+cor(prefilter$mean_ang, prefilter$mean_cor)
+
+p <- prefilter %>% ggplot()+
+  geom_point(aes(k, mean_cor), size=2)+
+  ggtitle("Correlation for k peaks and different intensity")+
+  ylab("Mean correlation in batches")+
+  facet_wrap(~i)+
+  NULL
+
+p
+
+#ggsave(p, file="plots/QC_prefilter.png", width = 100/25.4, height = 80/25.4)
+
+head(arrange(prefilter, -mean_cor))
+
+cor(prefilter$mean_cor,prefilter$predictors)
+
+prefilter_batch <- prefilter_batch %>% filter(mean_cor!="mean_cor")
+prefilter_batch$param <- sub("prefilter_", "", prefilter_batch$param)
+prefilter_batch <- prefilter_batch %>% separate(param, into = c("k", "i"), sep="_")
+prefilter_batch$k <- as.numeric(prefilter_batch$k)
+prefilter_batch$i <- as.numeric(prefilter_batch$i)
+prefilter_batch <- prefilter_batch %>% filter(i<200)
+prefilter_batch$mean_cor <- as.numeric(prefilter_batch$mean_cor)
+prefilter_batch$mean_ang <- as.numeric(prefilter_batch$mean_ang)
+cor(prefilter_batch$mean_ang, prefilter_batch$mean_cor)
+
+p <- prefilter_batch %>% ggplot()+
+  geom_point(aes(k, mean_cor, color=batch), size=5)+
+  #scale_color_manual(values="#D53E4F")+
+  facet_wrap(~i, ncol=2, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("Mean correlation in batches")+
+  #theme(legend.title=element_blank(), legend.position = c(.85, -0.09))+
+  NULL
+
+p
+```
+
+MZ:
+```{r}
+mz <- read_csv("QC_opt/results_mz.csv")
+mz_batch <- read_csv("QC_opt/results_batch_mz.csv")
+
+mz <- mz %>% filter(mean_cor!="mean_cor")
+mz$param <- sub("mz_", "", mz$param)
+mz <- mz %>% separate(param, into = c("expand", "fixed"), sep="_")
+#mz$expand <- as.numeric(mz$expand)
+mz$fixed <- as.numeric(mz$fixed)
+mz <- mz %>% filter(fixed<10)
+mz$mean_cor <- as.numeric(mz$mean_cor)
+mz$mean_ang <- as.numeric(mz$mean_ang)
+mz$predictors <- as.numeric(mz$predictors)
+cor(mz$mean_ang, mz$mean_cor)
+
+p <- mz %>% ggplot()+
+  geom_point(aes(expand, mean_cor), size=1)+
+  ggtitle("Expand MZ values given differend fixed MZ values")+
+  ylab("Mean correlation in batches")+
+  xlab("Expand MZ")+
+  facet_wrap(~fixed, ncol=18)+
+  theme(axis.text.x = element_text(angle = 90, vjust=0.5))+
+  NULL
+
+p
+
+ggsave(p, file="plots/QC_mz.png", width = 160/25.4, height = 60/25.4)
+
+head(arrange(mz, -mean_cor))
+
+cor(mz$mean_cor,mz$predictors)
+
+mz_batch <- mz_batch %>% filter(mean_cor!="mean_cor")
+mz_batch$param <- sub("mz_", "", mz_batch$param)
+mz_batch <- mz_batch %>% separate(param, into = c("expand", "fixed"), sep="_")
+mz_batch$fixed <- as.numeric(mz_batch$fixed)
+mz_batch <- mz_batch %>% filter(fixed<10)
+mz_batch$mean_cor <- as.numeric(mz_batch$mean_cor)
+mz_batch$mean_ang <- as.numeric(mz_batch$mean_ang)
+cor(mz_batch$mean_ang, mz_batch$mean_cor)
+
+p <- mz_batch %>% ggplot()+
+  geom_point(aes(expand, mean_cor, color=batch), size=2)+
+  #scale_color_manual(values="#D53E4F")+
+  #ggtitle("Different noise levels for differently filtered data")+
+  #xlab("Noise")+
+  facet_wrap(~fixed, ncol=12, scales="free_x", strip.position = "top")+
+  #scale_fill_manual(values = brewer.pal(11, "Spectral")[7:11])+
+  ylab("Mean correlation in batches")+
+  #theme(legend.title=element_blank(), legend.position = c(.85, -0.09))+
+  NULL
+
+p
+```
+
+## Optimized QC
+
+```{r}
+optimal_QC <- read_csv("QC_opt/results_eval_xcms_QC_optimal.csv")
+optimal_QC <- optimal_QC %>% filter(run!="run")
+#optimal$run <- as.numeric(optimal$run)
+optimal_QC$rmse_cv <- as.numeric(optimal_QC$rmse_cv)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+best_points <- rbind(best_points, data.frame("parameter"="QC_opt","cv_rmse"=optimal_QC$rmse_cv))
+
+best_means <- rbind(best_means, data.frame("parameter"="QC_opt", "mean_rmse"=mean(optimal_QC$rmse_cv)))
+
+diff_base <- best_means %>% filter(parameter!="old_data" & parameter!="base") %>%
+  mutate("diff_from_base" = mean(base$rmse_cv)- mean_rmse) %>% 
+  mutate(diff_from_old = mean(data_old$rmse_cv) - mean_rmse)
+
+diff_base <- diff_base[order(-diff_base$diff_from_base),]
+colnames(diff_base) <- c("Parameter", "Mean RMSE", "Difference from base XCMS", "Difference from old XCMS")
+diff_base$Parameter <- c("*Sequential optimization", 
+                         "Integration and noise (CWP)",
+                         "**Collected optimization",
+                         "*** QC optimization",
+                         "Bandwidth (PDP)",
+                         "Prefilter (CWP)",
+                         "Expand and fixed MZ (FCP)",
+                         "minFraction (PDP)",
+                         "Binsize (OP)",
+                         "Binsize (PDP)",
+                         "Expand and fixed RT (FCP)",
+                         "Reponse (OP)")
+ht <- as_hux(diff_base, autoformat = T, add_colnames=T)
+ht <- cbind(c("","Used in optimization","","","","","", "Not used in optimization", "","","","",""), ht)
+
+bold(ht)[1,] <- T
+#bold(ht)[4,] <- T
+ht <- set_text_color(ht, 4, 2:5, "#3288BD")
+ht <- set_text_color(ht, 2, 2:5, "#3288BD")
+ht <- set_text_color(ht, 7:12, 2:5, "grey40")
+ht <- ht %>% merge_cells(2:6,1) %>% merge_cells(7:12,1)
+bottom_border(ht)[,1]<-0.5
+bottom_border(ht)[2,] <- 0
+right_border(ht)[,1] <- 0.5
+#bottom_border(ht)[6,]<-0.5
+ht <- set_rotation(ht, 1:12,1, 90)
+#brewer.pal(11,"Spectral")
+ht <- theme_plain(ht)
+ht <- set_background_color(ht, 1:12,1, NA)
+ht <- set_valign(ht, 1:12, 1, "middle")
+ht
+```
+
+### old, base, collected optimized and sequential optimized
+
+```{r}
+#optimal <- optimal %>%select(run, rmse_cv) %>%  mutate("value"="seq_opt")
+comp_res <- bind_rows(data_old, base, optimized, optimal, optimal_QC)
+
+means <- comp_res %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- comp_res %>% ggplot()+
+  geom_point(aes(value, rmse_cv), alpha=0.3)+
+  geom_point(data=means, aes(value,means, color=type), shape="_", size=5)+
+  scale_color_manual(values="#D53E4F")+
+#  ggtitle('Old, new, collected and sequentially optimized XCMS')+
+  ylab("RMSE")+
+  theme(legend.text=element_blank(), legend.position = c(0.5, -0.09), axis.title.x = element_blank())+
+  scale_x_discrete(limits=c("Old_data", "base_0", "QC_optimal", "optimized_0", "seq_optimal"), labels=c("Old_data" ="Old XCMS", "base_0"="New XCMS", "optimized_0"= "Coll. opt.", "QC_optimal"="QC opt.", "seq_optimal"="Seq. opt."))+
+  NULL
+  
+p
+#ggsave(p, file="plots/optimized_collected_all.png", width = 100/25.4, height = 80/25.4)
+
+means <- means %>% arrange(means) %>% select(-type)
+colnames(means) <- c("Parameter", "Mean RMSE")
+means$Parameter <- c("Sequential optimization",
+                         "Collected optimization",
+                         "QC optimization",
+                         "Base XCMS",
+                         "Old XCMS")
+ht <- as_hux(means, autoformat = T, add_colnames=T)
+
+bold(ht)[1,] <- T
+#brewer.pal(11,"Spectral")
+ht <- theme_plain(ht)
+ht
+
+```
+
+
+Datasets
+
+```{r}
+opt_rtmz <- read_csv("QC_opt/prep_xcms_QC_optimal_rtmz.csv")
+temp1 <- data.frame(t(opt_rtmz %>% select(-name, -day, -batch)))
+colnames(temp1) <- opt_rtmz$name
+
+```
+
+Together:
+
+```{r}
+rtmz <- rbind(temp1 %>% mutate("type"= "QC_optimal"),rtmz)
+```
+
+
+QC optimized data distribution of M/Z and restention times
+
+```{r}
+p <- temp1 %>% ggplot()+
+  geom_hex(aes(rtmed, mzmed), bins=60)+
+  scale_fill_gradientn(colors=c("#5E4FA2","#66C2A5", "#FFFFBF","#F46D43", "#9E0142"))+
+  labs(x="Retention time", y="M/Z", title="Median retention time and M/Z for each feature")
+
+p
+#ggsave(p, file="plots/QC_opt_mzrt.png", width = 100/25.4, height = 80/25.4)
+```
+
+Plottet together:
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+p <- rtmz %>% ggplot()+
+  geom_point(aes(rtmed, mzmed, color=type), size=0.5)+
+  labs(x="Retention time", y="M/Z", 
+       title="Median retention time and M/Z for each feature",
+       color="XCMS")+
+  #scale_color_manual(values=c("#66C2A5", "#F46D43"), labels=c("Base", "Optimized"))+ 
+  guides(colour = guide_legend(override.aes = list(size=4, shape=15)))
+
+p
+#ggsave(p, file="plots/QC_base_mzrt.png", width = 125/25.4, height = 80/25.4)
+```
+
+# Default and old:
+
+```{r}
+default_rtmz <- read_csv("default/prep_xcms_default_rtmz.csv")
+temp1 <- data.frame(t(default_rtmz %>% select(-name, -day, -batch)))
+colnames(temp1) <- opt_rtmz$name
+
+rtmz <- rbind(temp1 %>% mutate("type"= "Default"),rtmz)
+
+default <- read_csv("default/results_eval_xcms_default.csv")
+
+```
+
+```{r}
+old_rtmz <- read_excel("../before_data/fingeraftryk_lipid_2017_2018_2019_samlet.xlsx", sheet = 2, col_names = T, range = "A1:ETG4") %>% filter(name!="ID") %>% select_if(~sum(!is.na(.)) > 0)
+
+temp1 <- data.frame(t(as.tibble(old_rtmz) %>% select(-name)))
+colnames(temp1) <- old_rtmz$name
+temp1$mzmed <- as.numeric(as.character(temp1$mzmed))
+temp1$rtmed <- as.numeric(as.character(temp1$rtmed))
+
+rtmz <- rbind(temp1 %>% mutate("type"= "old"),rtmz)
+```
+
+
+## All retentiontimes and M/Z plotted for final datasets:
+
+```{r}
+label_type <- c("Base XCMS", "Default XCMS", "Combined optimization", "Old XCMS", "QC optimization", "Sequential optimization")
+names(label_type) <- c("base","Default", "gathered", "old", "QC_optimal", "seq")
+
+rtmz$type <- factor(rtmz$type, levels = c("old", "base", "Default", "gathered", "seq", "QC_optimal"))
+
+p <- rtmz %>% ggplot()+
+  geom_hex(aes(rtmed, mzmed), bins=60)+
+  scale_fill_gradientn(colors=c("#5E4FA2","#66C2A5", "#FFFFBF","#F46D43", "#9E0142"))+
+  facet_wrap(~type, labeller = labeller(type=label_type))+
+  labs(x="Median retention time", y="Median M/Z", title="Median retention time and M/Z pr feature")
+
+p
+
+ggsave(p, file="plots2/collected_mzrt.png", width = 150/25.4, height = 100/25.4)
+
+```
+
+### Histogram over retentiontime:
+
+```{r}
+p <- rtmz %>% ggplot()+
+  geom_histogram(aes(rtmed), color="#3288BD", fill="#66C2A5", bins=50)+
+  #scale_fill_gradientn(colors=c("#5E4FA2","#66C2A5", "#FFFFBF","#F46D43", "#9E0142"))+
+  facet_wrap(~type, labeller = labeller(type=label_type))+
+  labs(x="Median retention time", y="")+
+  NULL
+
+p
+
+ggsave(p, file="plots2/collected_rt.png", width = 225/25.4, height = 150/25.4)
+```
+
+### Histogram over M/Z:
+
+```{r}
+p <- rtmz %>% ggplot()+
+  geom_histogram(aes(mzmed), color="#3288BD", fill="#66C2A5", bins=50)+
+  #scale_fill_gradientn(colors=c("#5E4FA2","#66C2A5", "#FFFFBF","#F46D43", "#9E0142"))+
+  facet_wrap(~type, labeller = labeller(type=label_type))+
+  labs(x="Median M/Z", y="")+
+  #theme(axis.text.x = element_text(angle=-45, vjust=-0.001))+
+  NULL
+
+p
+
+ggsave(p, file="plots2/collected_mz.png", width = 225/25.4, height = 150/25.4)
+```
+
+## All final datasets together
+
+```{r}
+default <- default %>% filter(run!="run")
+default$rmse_cv <- as.numeric(default$rmse_cv)
+
+comp_res <- bind_rows(data_old, base, optimized, optimal, optimal_QC, default)
+
+means <- comp_res %>% group_by(value) %>% summarise(means=mean(rmse_cv)) %>% mutate("type"="Mean RMSE")
+
+p <- comp_res %>% ggplot()+
+  geom_point(aes(value, rmse_cv), alpha=0.3)+
+  geom_point(data=means, aes(value,means),color="#D53E4F", shape="|", size=4)+
+  #scale_color_manual(values="#D53E4F")+
+  theme(legend.position = c(0.5, -0.09), axis.title.y = element_blank())+
+  ylab("RMSE")+
+  scale_x_discrete(limits=c( "seq_optimal","optimized_0", "QC_optimal", "base_0", "Old_data","default"), labels=c("default"= "Default XCMS","Old_data" ="Old XCMS", "base_0"="Base XCMS", "optimized_0"= "Comb. opt.", "QC_optimal"="QC opt.", "seq_optimal"="Seq. opt."))+
+  coord_flip()+
+  NULL
+  
+p
+ggsave(p, file="plots2/optimized_collected_all.png", width = 100/25.4, height = 70/25.4)
+
+
+means <- means %>% arrange(means) %>% select(-type)
+colnames(means) <- c("Version", "Mean RMSE")
+means$Version <- c("Sequential optimization",
+                     "Combined optimization",
+                     "QC optimization",
+                     "Base XCMS",
+                     "Old XCMS",
+                     "Default XCMS")
+
+predictors <- rtmz %>% group_by(type) %>% summarise(`#Predictors`=n()) %>% select(-type)
+predictors$Version <- c("Old XCMS",
+                          "Base XCMS",
+                          "Default XCMS",
+                          "Combined optimization",
+                          "Sequential optimization",
+                          "QC optimization")
+
+predictors
+means <- merge(means,predictors, by="Version") %>% arrange(`Mean RMSE`)
+
+
+ht <- as_hux(means, autoformat = T, add_colnames=T)
+
+bold(ht)[1,] <- T
+#brewer.pal(11,"Spectral")
+ht <- theme_plain(ht)
+ht
+
+```
+
+
+
+
